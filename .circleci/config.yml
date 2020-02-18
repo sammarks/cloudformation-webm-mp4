@@ -1,0 +1,77 @@
+version: 2.1
+defaults: &defaults
+  working_directory: ~/repo
+  docker:
+    - image: circleci/node:10.16.1
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: Authenticate with registry
+          command: |
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/repo/.npmrc
+            echo "//registry.yarnpkg.com/:_authToken=$NPM_TOKEN" > ~/repo/.npmrc
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package.json" }}
+            - v1-dependencies-
+      - run: yarn
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package.json" }}
+      - run: yarn lint
+      # - run:
+      #     name: Jest Suite
+      #     command: yarn test --ci --testResultsProcessor="jest-junit"
+      #     environment:
+      #       JEST_JUNIT_OUTPUT: "reports/junit/js-test-results.xml"
+      # - store_test_results:
+      #     path: reports
+      # - run:
+      #     name: Report Coverage
+      #     command: yarn report-coverage
+      - persist_to_workspace:
+          root: ~/repo
+          paths: .
+  deploy:
+    <<: *defaults
+    environment:
+      NODE_ENV: production
+    steps:
+      - attach_workspace:
+          at: ~/repo
+      - run:
+          name: Setup Environment Variables
+          command: |
+            echo 'export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID"' >> $BASH_ENV
+            echo 'export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"' >> $BASH_ENV
+            echo 'export COVERALLS_REPO_TOKEN="$COVERALLS_REPO_TOKEN"' >> $BASH_ENV
+      - run:
+          name: Install AWS CLI
+          command: |
+            sudo apt-get -y -qq install python-pip python-dev
+            sudo pip install --upgrade awscli
+      - run:
+          name: Deploy to S3
+          command: yarn deploy
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build:
+          context: open-source
+          filters:
+            tags:
+              only: /.*/
+      - deploy:
+          context: personal-aws
+          requires:
+            - build
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/

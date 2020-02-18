@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: 'Converts WEBM videos uploaded to a S3 bucket to MP4 videos in a destination bucket.'
+Resources:
+  InputBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref InputBucketName
+      NotificationConfiguration:
+        TopicConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Topic: !Ref BucketCreatedTopic
+    DependsOn: ['BucketCreatedTopicPolicy']
+  BucketCreatedTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  BucketCreatedTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      Topics:
+        - !Ref BucketCreatedTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: ['SNS:Publish']
+            Resource: '*'
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !Join ['', ['arn:aws:s3:::', !Ref InputBucketName]]
+  Topic:
+    Type: 'AWS::SNS::Topic'
+    Properties: {}
+  FfmpegLambdaLayer:
+    Type: 'AWS::Serverless::Application'
+    Properties:
+      Location:
+        ApplicationId: >-
+          arn:aws:serverlessrepo:us-east-1:145266761615:applications/ffmpeg-lambda-layer
+        SemanticVersion: 1.0.0
+  ConvertFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: convertVideo.handler
+      Runtime: nodejs12.x
+      CodeUri: src
+      MemorySize: 2048
+      Timeout: 60
+      Policies:
+        - AWSLambdaExecute
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt Topic.TopicName
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Ref OutputBucketName
+          SNS_TOPIC: !Ref Topic
+          DEBUG: !Ref DebugLevel
+      Layers:
+        - !GetAtt FfmpegLambdaLayer.Outputs.LayerVersion
+      Events:
+        SNS:
+          Type: SNS
+          Properties:
+            Topic: !Ref BucketCreatedTopic
+Parameters:
+  DebugLevel:
+    Type: String
+    Default: ""
+    Description: "The DEBUG environment variable for the Lambda. Set to 'cloudformation-webm-mp4' to enable debug."
+  InputBucketName:
+    Type: String
+    Description: "The name of the input bucket. We WILL create this for you."
+  OutputBucketName:
+    Type: String
+    Description: "The name of the output bucket. We WILL NOT create this for you."
+Outputs:
+  InputBucket:
+    Description: S3 Input Bucket
+    Value: !Ref InputBucket
+  InputBucketArn:
+    Description: S3 Input Bucket ARN
+    Value: !GetAtt InputBucket.Arn
+  Topic:
+    Description: SNS Notification Topic
+    Value: !Ref Topic
+  S3Topic:
+    Description: S3 Object Created SNS Topic
+    Value: !Ref BucketCreatedTopic
