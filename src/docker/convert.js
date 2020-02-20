@@ -82,6 +82,8 @@ const convertVideo = (bucket, srcKey) => {
         'copy',
         '-f',
         'mp4',
+        '-movflags',
+        '+faststart',
         targetFilename
       ], {
         stdio: 'inherit'
