@@ -1,6 +1,5 @@
 const AWS = require('aws-sdk')
 const { spawn } = require('child_process')
-const https = require('https')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -29,11 +28,35 @@ const STATUSES = {
 const reportStatusUpdate = async (bucket, key, status, detail) => {
   const payload = { bucket, key, status, detail }
   console.info('reporting status update', payload)
-  await sns.publish({
-    Message: JSON.stringify(payload),
-    TopicArn: snsTopic
-  }).promise()
+  try {
+    await sns.publish({
+      Message: JSON.stringify(payload),
+      TopicArn: snsTopic
+    }).promise()
+  } catch (err) {
+    console.error('error reporting status update')
+    console.error(err)
+    throw err
+  }
   console.info('reported')
+}
+
+const downloadFile = (bucket, srcKey, resultPath) => {
+  return new Promise((resolve, reject) => {
+    console.info('downloading from bucket %s and key %s', bucket, srcKey)
+    const file = fs.createWriteStream(resultPath)
+    s3.getObject({
+      Bucket: bucket,
+      Key: srcKey
+    }).createReadStream().on('error', err => {
+      console.error('error writing to result file')
+      console.error(err)
+      reject(new Error('error writing to result file'))
+    }).pipe(file).on('close', () => {
+      console.info('file written successfully')
+      resolve()
+    })
+  })
 }
 
 const convertVideo = (bucket, srcKey) => {
@@ -51,51 +74,41 @@ const convertVideo = (bucket, srcKey) => {
       }
     }
     console.info('downloading webm (h264) source to', sourceFilename)
-    const signedUrl = s3.getSignedUrl('getObject', { Bucket: bucket, Key: srcKey, Expires: 60000 })
-    https.get(signedUrl, response => {
-      const stream = fs.createWriteStream(sourceFilename)
-      response.pipe(stream)
-        .on('close', () => {
-          const ffmpeg = spawn(FFMPEG_PATH, [
-            '-i',
-            sourceFilename,
-            '-c:v',
-            'copy',
-            '-f',
-            'mp4',
-            targetFilename
-          ], {
-            stdio: 'inherit'
-          })
-          ffmpeg.on('close', code => {
-            if (code !== 0) {
-              console.error('error processing ffmpeg. see logs for more details')
-              cleanFiles()
-              reject(new Error('error processing ffmpeg. see logs for more details'))
+    downloadFile(bucket, srcKey, sourceFilename).then(() => {
+      const ffmpeg = spawn(FFMPEG_PATH, [
+        '-i',
+        sourceFilename,
+        '-c:v',
+        'copy',
+        '-f',
+        'mp4',
+        targetFilename
+      ], {
+        stdio: 'inherit'
+      })
+      ffmpeg.on('close', code => {
+        if (code !== 0) {
+          console.error('error processing ffmpeg. see logs for more details')
+          cleanFiles()
+          reject(new Error('error processing ffmpeg. see logs for more details'))
+        } else {
+          const fileStream = fs.createReadStream(targetFilename)
+          s3.upload({
+            Bucket: outputBucket,
+            Key: targetKey,
+            Body: fileStream
+          }, err => {
+            fileStream.close()
+            cleanFiles()
+            if (err) {
+              reject(err)
             } else {
-              const fileStream = fs.createReadStream(targetFilename)
-              s3.upload({
-                Bucket: outputBucket,
-                Key: targetKey,
-                Body: fileStream
-              }, err => {
-                fileStream.close()
-                cleanFiles()
-                if (err) {
-                  reject(err)
-                } else {
-                  resolve(targetKey)
-                }
-              })
+              resolve(targetKey)
             }
           })
-        })
-    })
-      .on('error', err => {
-        console.error('error with request')
-        console.error(err)
-        cleanFiles()
+        }
       })
+    }).catch(err => reject(err))
   })
 }
 

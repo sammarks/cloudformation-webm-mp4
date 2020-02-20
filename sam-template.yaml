@@ -40,31 +40,53 @@ Resources:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
+        Version: '2012-10-17'
         Statement:
-        - Effect: Allow
-          Principal:
-            Service: [ecs-tasks.amazonaws.com]
-          Action: ['sts:AssumeRole']
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
       Path: /
       Policies:
         - PolicyName: AmazonECSTaskExecutionRolePolicy
           PolicyDocument:
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
-                  - 'sns:Publish'
-                  - 's3:PutObject'
                 Resource: '*'
+  ECSTaskRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: WebMTaskRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
               - Effect: Allow
                 Action:
-                  - 's3:PutObject'
-                  - 's3:PutObjectAcl'
-                  - 's3:PutLifecycleConfiguration'
+                  - 's3:*'
                 Resource:
                   - !Join ['', ['arn:aws:s3:::', !Ref InputBucketName]]
                   - !Join ['', ['arn:aws:s3:::', !Ref InputBucketName, '/*']]
+                  - !Join ['', ['arn:aws:s3:::', !Ref OutputBucketName]]
+                  - !Join ['', ['arn:aws:s3:::', !Ref OutputBucketName, '/*']]
               - Effect: Allow
                 Action:
                   - 'sns:Publish'
@@ -80,6 +102,9 @@ Resources:
       ContainerDefinitions:
         - Name: !Ref ContainerName
           Image: "sammarks/cloudformation-webm-mp4:PACKAGE_VERSION"
+          Environment:
+            OUTPUT_BUCKET: !Ref OutputBucketName
+            SNS_TOPIC: !Ref Topic
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -89,6 +114,7 @@ Resources:
       Cpu: 512
       Memory: 1024
       ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskRole
       NetworkMode: awsvpc
       RequiresCompatibilities: ['FARGATE']
   TriggerFunction:
