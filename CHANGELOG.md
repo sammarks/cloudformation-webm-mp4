@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.6](https://github.com/sammarks/cloudformation-webm-mp4/compare/v0.1.5...v0.1.6) (2020-02-20)
+
+
+### Bug Fixes
+
+* use faststart ([c445f0b](https://github.com/sammarks/cloudformation-webm-mp4/commit/c445f0ba8d72d03adf8f16e92c74d90032d0b9c3))
+
 ### [0.1.5](https://github.com/sammarks/cloudformation-webm-mp4/compare/v0.1.4...v0.1.5) (2020-02-20)
 
 

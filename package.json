@@ -1,6 +1,6 @@
 {
   "name": "cloudformation-webm-mp4",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Converts WEBM videos encoded in H264 to MP4 videos.",
   "main": "index.js",
   "repository": "https://github.com/sammarks/cloudformation-webm-mp4",
