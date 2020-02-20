@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.5](https://github.com/sammarks/cloudformation-webm-mp4/compare/v0.1.4...v0.1.5) (2020-02-20)
+
+
+### Bug Fixes
+
+* fix lambda passRole permissions ([78c4c89](https://github.com/sammarks/cloudformation-webm-mp4/commit/78c4c89bfe765fc0691ec65257ea7d345d28d314))
+
 ### [0.1.4](https://github.com/sammarks/cloudformation-webm-mp4/compare/v0.1.3...v0.1.4) (2020-02-20)
 
 
