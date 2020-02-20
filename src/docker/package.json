@@ -1,0 +1,8 @@
+{
+  "name": "cloudformation-webm-mp4-docker",
+  "version": "0.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "aws-sdk": "2.592.0"
+  }
+}

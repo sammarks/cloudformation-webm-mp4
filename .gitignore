@@ -2,6 +2,7 @@
 packaged-template.yaml
 coverage
 yarn-error.log
+env.sh
 
 # package directories
 node_modules

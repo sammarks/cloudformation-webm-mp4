@@ -1,0 +1,9 @@
+docker run \
+  --env "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+  --env "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+  --env "AWS_REGION=$AWS_REGION" \
+  --env "OUTPUT_BUCKET=$OUTPUT_BUCKET" \
+  --env "SNS_TOPIC=$SNS_TOPIC" \
+  --env "INPUT_SOURCE_KEY=$INPUT_SOURCE_KEY" \
+  --env "INPUT_BUCKET=$INPUT_BUCKET" \
+  [container]

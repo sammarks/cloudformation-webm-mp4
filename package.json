@@ -11,7 +11,8 @@
     "test": "jest --coverage",
     "report-coverage": "cat ./coverage/lcov.info | coveralls",
     "release": "standard-version",
-    "deploy": "./deploy-to-s3.sh"
+    "deploy": "./deploy-to-s3.sh",
+    "deploy-docker": "./deploy-docker.sh"
   },
   "devDependencies": {
     "aws-sdk": "^2.592.0",

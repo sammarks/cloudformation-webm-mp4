@@ -10,8 +10,6 @@ encoded with the H264 Codec (possible using [MediaRecorder](https://developer.mo
 and convert them to MP4 videos with the same H264 video codec. It sends a notification through
 SNS to keep track of progress and completion.
 
-This package utilizes [serverlesspub's ffmpeg-aws-lambda-layer package](https://github.com/serverlesspub/ffmpeg-aws-lambda-layer) for easily packaging ffmpeg with the Lambda function.
-
 ## Get Started
 
 It's simple! Click this fancy button:
@@ -26,7 +24,9 @@ Then give the stack a name, and configure it:
 | --- | --- | --- | --- |
 | InputBucketName | **Yes** | | The name of the bucket to use for video inputs. **This bucket MUST NOT already exist.** |
 | OutputBucketName | **Yes** | | The name of the bucket to use for output videos. **This bucket MUST already exist.** |
-| DebugLevel | No | `<empty string>` | The `DEBUG` environment variable for the Lambda. Set to `cloudformation-webm-mp4` to enable debug messages. |
+| SubnetNames | **Yes** | | A comma-separated list of VPC subnets to launch the Fargate container in. |
+| SecurityGroupNames | **Yes** | | A comma-separated list of VPC security groups (that have access to the internet) to launch the Fargate container in. |
+| ContainerName | No | `webm-convert` | The name of the Fargate container. |
 
 ### Outputs
 
@@ -49,7 +49,9 @@ videoThumbnailStack:
     Parameters:
       InputBucketName: test-input-bucket
       OutputBucketName: test-output-bucket
-      DebugLevel: ''
+      SubnetNames: subnet-aaaaa,subnet-bbbbb
+      SecurityGroupNames: sg-aaaaa,sg-bbbbb
+      ContainerName: webm-convert
 ```
 
 **Note:** This stack will require the `CAPABILITY_AUTO_EXPAND` capability when deploying
@@ -95,18 +97,53 @@ own Lambda functions, simply create a Lambda function that references the
 - One S3 bucket, for video input.
 - A SNS topic for notifications.
 - A SNS topic for object created notifications for the input bucket.
-- A Lambda function to process the videos.
+- An ECS cluster and task definition to contain the configuration for the
+  conversion Docker container.
+- A Lambda function to launch a new instance of the task definition inside
+  Fargate when a video needs to be converted.
 
 ### How does it work?
 
-The Lambda goes through the following process:
+Whenever a video is uploaded to the input bucket, it goes through the following
+process:
 
-- Verify the video ends in `.webm` - it will throw an error if it does not.
-- Get a signed URL for the video using S3.
-- Pipe the `https.get()` result into the `ffmpeg` process to convert the video.
-- Start an upload using `s3.upload()` to the destination bucket.
-- Pipe the stream from `ffmpeg` into `s3.upload`
-- Send a notification through SNS when the process is complete or errors.
+- The Lambda is triggered and verifies the video ends in `.webm` - it will throw
+  an error if it does not.
+- Lambda creates a new instance of the task definition and launches it inside
+  Fargate with your provided VPC configuration.
+- The Docker container downloads the video to temporary storage, runs it through
+  `ffmpeg` to convert the container from WEBM to MP4, and then uploads the result
+  to the destination bucket inside S3.
+- Send a notification to SNS when the process is complete or errors.
+
+#### Why Fargate / Docker containers?
+
+In the initial version of this project, we were just running the conversion inside a
+Lambda function with `ffmpeg` included in the deployment package. We would stream the
+video file from S3 directly into an `ffmpeg` process, and then stream the results
+back up to S3 all while doing the conversion.
+
+The problem with this is we weren't able to generate the moov atom that MP4 requires
+and uses to encode information like the duration of the video, so we had to pass flags
+to tell ffmpeg to not create the moov atom. Ffmpeg requires seekable output in order
+to generate the moov atom, and we can't seek to different parts of the file if we're
+uploading a stream to S3.
+
+The solution is to download the entire file, store it in temporary storage, then
+run the entire file through ffmpeg, and then upload the result to S3, all separately.
+Unfortunately, Lambda is limited to 512MB of temporary storage, _and that temporary
+storage is shared across invocations of a function._ This means if you don't clean
+up the files in `/tmp` appropriately across invocations, you will quickly run out of
+space.
+
+This effectively meant that the filesize of our videos would be limited to, at a
+maximum, 256MB. It would be possible for a video to exceed that size, and we need
+this solution to work 100% of the time. Therefore, the next best thing is to create
+a Docker container and run it inside AWS Fargate so we don't have to manage a cluster
+of Docker containers and only pay for the hours of the machine that we use. Would
+Fargate not have existed, the next best solution would probably be to just launch an
+EC2 instance whenever we wanted to do the conversion, and then shut it down when we're
+done.
 
 ### Accessing Previous Versions & Upgrading
 
@@ -122,6 +159,7 @@ https://sammarks-cf-templates.s3.amazonaws.com/webm-mp4/VERSION/template.yaml
 
 - Automatically convert `webm` videos encoded in the H264 codec to `mp4` videos with the same codec.
 - Send notifications about updates and error messages to a SNS topic.
+- Uses AWS Lambda + AWS Fargate so you only pay for the hours you are actively converting something.
 - Deploy with other CloudFormation-compatible frameworks (like the Serverless framework).
 - All functionality is self-contained within one CloudFormation template. Delete the template, and all of our created resources are removed.
 
@@ -131,7 +169,9 @@ As I mentioned briefly above, the inspiration for this template was to easily co
 generated using the [MediaRecorder](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder) APIs
 (which support H264 in WEBM format), to MP4 videos for broader consumption on mobile devices.
 
-Running `ffmpeg` inside Lambda to achieve this becomes immensely cheaper than using something
-like AWS' ElementalMedia services.
+Running a Docker container with `ffmpeg` installed inside AWS Fargate to achieve this becomes
+immensely cheaper than using something like AWS' ElementalMedia services because we're just
+doing a simple container change instead of re-encoding the video into a different codec, so
+we don't need the massive amount of CPU power something like AWS' ElementalMedia provides.
 
 [header-image]: https://raw.githubusercontent.com/sammarks/art/master/cloudformation-webm-mp4/header.jpg

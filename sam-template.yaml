@@ -33,48 +33,118 @@ Resources:
   Topic:
     Type: 'AWS::SNS::Topic'
     Properties: {}
-  FfmpegLambdaLayer:
-    Type: 'AWS::Serverless::Application'
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties: {}
+  ECSTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
     Properties:
-      Location:
-        ApplicationId: >-
-          arn:aws:serverlessrepo:us-east-1:145266761615:applications/ffmpeg-lambda-layer
-        SemanticVersion: 1.0.0
-  ConvertFunction:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'sns:Publish'
+                  - 's3:PutObject'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:PutObject'
+                  - 's3:PutObjectAcl'
+                  - 's3:PutLifecycleConfiguration'
+                Resource:
+                  - !Join ['', ['arn:aws:s3:::', !Ref InputBucketName]]
+                  - !Join ['', ['arn:aws:s3:::', !Ref InputBucketName, '/*']]
+              - Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                Resource:
+                  - !Ref Topic
+  ECSLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      RetentionInDays: 7
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+        - Name: !Ref ContainerName
+          Image: "sammarks/cloudformation-webm-mp4:PACKAGE_VERSION"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ECSLogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: ecs
+      Cpu: 512
+      Memory: 1024
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      NetworkMode: awsvpc
+      RequiresCompatibilities: ['FARGATE']
+  TriggerFunction:
     Type: 'AWS::Serverless::Function'
     Properties:
-      Handler: convertVideo.handler
+      Handler: trigger.handler
       Runtime: nodejs12.x
       CodeUri: src
-      MemorySize: 2048
-      Timeout: 60
+      MemorySize: 128
+      Timeout: 5
       Policies:
         - AWSLambdaExecute
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt Topic.TopicName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'ecs:RunTask'
+              Resource:
+                - !Ref TaskDefinition
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'iam:PassRole'
+              Resource:
+                - !GetAtt ECSTaskExecutionRole.Arn
       Environment:
         Variables:
-          OUTPUT_BUCKET: !Ref OutputBucketName
+          ECS_CLUSTER: !Ref ECSCluster
+          ECS_TASK_DEFINITION: !Ref TaskDefinition
+          ECS_TASK_CONTAINER: !Ref ContainerName
+          SUBNET_NAMES: !Ref SubnetNames
+          SECURITY_GROUP_NAMES: !Ref SecurityGroupNames
           SNS_TOPIC: !Ref Topic
-          DEBUG: !Ref DebugLevel
-      Layers:
-        - !GetAtt FfmpegLambdaLayer.Outputs.LayerVersion
       Events:
         SNS:
           Type: SNS
           Properties:
             Topic: !Ref BucketCreatedTopic
 Parameters:
-  DebugLevel:
-    Type: String
-    Default: ""
-    Description: "The DEBUG environment variable for the Lambda. Set to 'cloudformation-webm-mp4' to enable debug."
   InputBucketName:
     Type: String
     Description: "The name of the input bucket. We WILL create this for you."
   OutputBucketName:
     Type: String
     Description: "The name of the output bucket. We WILL NOT create this for you."
+  ContainerName:
+    Type: String
+    Default: webm-convert
+    Description: "The name of the ECS container to create inside the task definition."
+  SubnetNames:
+    Type: String
+    Description: "A comma-separated listed of VPC subnet names."
+  SecurityGroupNames:
+    Type: String
+    Description: "A comma-separated list of security groups to use for the task."
 Outputs:
   InputBucket:
     Description: S3 Input Bucket
