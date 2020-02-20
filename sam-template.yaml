@@ -143,6 +143,7 @@ Resources:
                 - 'iam:PassRole'
               Resource:
                 - !GetAtt ECSTaskExecutionRole.Arn
+                - !GetAtt ECSTaskRole.Arn
       Environment:
         Variables:
           ECS_CLUSTER: !Ref ECSCluster
