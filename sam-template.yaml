@@ -103,8 +103,10 @@ Resources:
         - Name: !Ref ContainerName
           Image: "sammarks/cloudformation-webm-mp4:PACKAGE_VERSION"
           Environment:
-            OUTPUT_BUCKET: !Ref OutputBucketName
-            SNS_TOPIC: !Ref Topic
+            - Name: OUTPUT_BUCKET
+              Value: !Ref OutputBucketName
+            - Name: SNS_TOPIC
+              Value: !Ref Topic
           LogConfiguration:
             LogDriver: awslogs
             Options:
